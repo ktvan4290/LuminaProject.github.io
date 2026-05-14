@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPATUNE — Spatial Audio Tuner</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script>
+    (function(){
+      const t = localStorage.getItem('spatune-theme');
+      if (t) document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+</head>
+<body>
+<div class="app">
+
+  <header class="header">
+    <div class="header-title">SPATUNE</div>
+    <div class="header-sub">SPATIAL AUDIO TUNER</div>
+    <div class="theme-switcher">
+      <button class="theme-btn" data-theme="dark"        title="다크 테마">DARK</button>
+      <button class="theme-btn" data-theme="light"       title="라이트 테마">LIGHT</button>
+      <button class="theme-btn" data-theme="avantgarde"  title="택티컬">TACT</button>
+    </div>
+    <div class="header-badge">WEB EDITION</div>
+  </header>
+
+  <div class="main">
+
+    <!-- 왼쪽: 스피커 타입 탭 + 프리셋 목록 -->
+    <aside class="panel left-panel">
+      <div class="panel-header">PRESETS</div>
+      <div class="speaker-type-bar" id="speakerTypeBar"></div>
+      <ul class="preset-list" id="presetList"></ul>
+      <div class="preset-footer">Harman · AutoEQ · IEF · RTINGS</div>
+    </aside>
+
+    <!-- 가운데: EQ 커브 -->
+    <section class="panel center-panel">
+      <div class="panel-header">FREQUENCY RESPONSE</div>
+      <div class="eq-canvas-wrap">
+        <canvas id="eqCanvas"></canvas>
+      </div>
+    </section>
+
+    <!-- 오른쪽: 밴드 테이블 or 커스텀 EQ + 밸런스 -->
+    <aside class="right-panel" id="rightPanel"></aside>
+
+  </div>
+
+  <!-- 하단 액션 바 -->
+  <footer class="action-bar">
+
+    <!-- 볼륨 -->
+    <div class="test-group">
+      <span class="group-label">볼륨</span>
+      <span class="vol-icon">🔈</span>
+      <input type="range" id="volumeSlider" min="0" max="100" value="40" class="vol-slider">
+      <span class="vol-icon">🔊</span>
+      <span id="volumeLabel" class="vol-label">40%</span>
+    </div>
+
+    <div class="sep"></div>
+
+    <!-- 소스 -->
+    <div class="test-group">
+      <span class="group-label">소스</span>
+      <label class="btn btn-file">
+        🎵 파일 선택
+        <input type="file" id="fileInput" accept="audio/*" style="display:none">
+      </label>
+      <span id="fileLabel" style="font-size:10px;color:var(--text3);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Always Coca-Cola</span>
+      <button class="btn" id="btnPlayFile" disabled>▶ 재생</button>
+    </div>
+
+    <div class="sep"></div>
+
+    <!-- 신호 -->
+    <div class="test-group">
+      <span class="group-label">신호</span>
+      <button class="btn" id="btnNoise">핑크 노이즈</button>
+      <button class="btn" id="btnSweep">주파수 스윕</button>
+      <button class="btn" id="btnStop" disabled>■ 정지</button>
+    </div>
+
+    <div class="sep"></div>
+
+    <!-- EQ 토글 — 크게 -->
+    <button class="btn btn-eq-toggle" id="eqToggle">EQ ON ✓</button>
+
+    <span id="testStatus" class="test-status"></span>
+
+    <div class="copy-group">
+      <button class="btn btn-primary" id="copyBtn">APO 복사</button>
+      <span id="copyStatus"></span>
+    </div>
+
+  </footer>
+
+</div>
+
+<script src="js/presets.js"></script>
+<script src="js/audio_data.js"></script>
+<script src="js/audio_test.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
