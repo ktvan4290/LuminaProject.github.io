@@ -541,15 +541,14 @@ const spectrumToggle = document.getElementById('spectrumToggle');
 let _spectrumRafId = null;
 
 function _spectrumLoop() {
+  // AudioContext가 생긴 순간부터 자동 연결 (타이밍 문제 없이)
+  if (audioEngine._ctx && audioEngine._masterGain && !spectrumAnalyzer._analyser) {
+    spectrumAnalyzer.attach(audioEngine._ctx, audioEngine._masterGain);
+  }
   drawEQ();
   if (spectrumAnalyzer.enabled) _spectrumRafId = requestAnimationFrame(_spectrumLoop);
 }
-function _attachSpectrum() {
-  if (!audioEngine._ctx || !audioEngine._masterGain) return;
-  if (!spectrumAnalyzer._analyser) {
-    spectrumAnalyzer.attach(audioEngine._ctx, audioEngine._masterGain);
-  }
-}
+
 if (spectrumToggle) {
   spectrumToggle.addEventListener('click', () => {
     const on = spectrumAnalyzer.toggle();
@@ -557,7 +556,6 @@ if (spectrumToggle) {
     spectrumToggle.style.color = on ? 'var(--cyan)' : '';
     spectrumToggle.style.borderColor = on ? 'var(--cyan)' : '';
     if (on) {
-      _attachSpectrum();
       if (!_spectrumRafId) _spectrumRafId = requestAnimationFrame(_spectrumLoop);
     } else {
       if (_spectrumRafId) { cancelAnimationFrame(_spectrumRafId); _spectrumRafId = null; }
@@ -565,12 +563,6 @@ if (spectrumToggle) {
     }
   });
 }
-const _origPlayNoise = audioEngine.playPinkNoise.bind(audioEngine);
-audioEngine.playPinkNoise = function(...a) { _origPlayNoise(...a); _attachSpectrum(); };
-const _origPlaySweep  = audioEngine.playSweep.bind(audioEngine);
-audioEngine.playSweep  = function(...a) { _origPlaySweep(...a); _attachSpectrum(); };
-const _origPlayFile   = audioEngine.playFile.bind(audioEngine);
-audioEngine.playFile   = function(...a) { const r=_origPlayFile(...a); _attachSpectrum(); return r; };
 
 // ── 스페이스바 재생/정지 ──────────────────────────────────
 document.addEventListener('keydown', e => {
