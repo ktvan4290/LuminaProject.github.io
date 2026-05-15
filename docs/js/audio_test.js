@@ -14,9 +14,10 @@ class AudioEngine {
     this._currentBands = [];
     this._fileBuffer   = null;
     this._sweepTimer   = null;
-    this._balanceValue = 0;      // 슬라이더 값 저장 (init 전에도 유지)
+    this._balanceValue = 0;
     this._balTestNodes = [];
-    this._audioCache   = {};     // 디코딩된 밸런스 테스트 버퍼 캐시
+    this._audioCache   = {};
+    this._preamp       = null;
   }
 
   // ── 초기화 (사용자 제스처 필요) ─────────────────────────
@@ -25,45 +26,49 @@ class AudioEngine {
       this._ctx = new (window.AudioContext || window.webkitAudioContext)();
 
       this._masterGain = this._ctx.createGain();
-      this._masterGain.gain.value = this._volumeValue ?? 0.36; // 슬라이더 기본값 40% 반영
+      this._masterGain.gain.value = this._volumeValue ?? 0.36;
 
-      // L/R 개별 게인으로 밸런스 제어 (StereoPannerNode 대신 — 더 확실)
-      this._leftGain  = this._ctx.createGain();
-      this._rightGain = this._ctx.createGain();
-      const merger = this._ctx.createChannelMerger(2);
+      // 밸런스: StereoPannerNode (ChannelMerger 불필요)
+      this._panner = this._ctx.createStereoPanner();
+      this._panner.pan.value = this._balanceValue ?? 0;
 
-      // masterGain(모노) → 복제 → 각 채널 → merger → destination
-      this._masterGain.connect(this._leftGain);
-      this._masterGain.connect(this._rightGain);
-      this._leftGain.connect(merger,  0, 0);   // 왼쪽 채널
-      this._rightGain.connect(merger, 0, 1);   // 오른쪽 채널
-      merger.connect(this._ctx.destination);
+      // effects 체인 (처음부터 연결, 기본값은 투명)
+      if (typeof effectsEngine !== 'undefined') {
+        this._fxEntry = effectsEngine.setupChain(this._ctx, this._masterGain);
+      } else {
+        this._fxEntry = this._masterGain;
+      }
 
-      // 저장된 밸런스 값 적용
-      this._applyBalanceGain(this._balanceValue);
+      // masterGain → panner → destination (단순, 확실)
+      this._masterGain.connect(this._panner);
+      this._panner.connect(this._ctx.destination);
+
+      // 하위 호환용 더미 (밸런스 코드가 참조)
+      this._leftGain  = { gain: { value: 1 } };
+      this._rightGain = { gain: { value: 1 } };
     }
     if (this._ctx.state === 'suspended') this._ctx.resume();
   }
 
-  // ── 밸런스 게인 계산 ─────────────────────────────────────
   _applyBalanceGain(val) {
-    if (!this._leftGain) return;
-    // val: -1=완전 왼쪽, 0=중앙, +1=완전 오른쪽
-    const left  = val <= 0 ? 1.0 : 1.0 - val;
-    const right = val >= 0 ? 1.0 : 1.0 + val;
-    this._leftGain.gain.value  = left;
-    this._rightGain.gain.value = right;
+    if (this._panner) this._panner.pan.value = Math.max(-1, Math.min(1, val));
   }
 
-  // 슬라이더에서 호출 — 소리 없이 값만 저장/적용
   setBalance(val) {
     this._balanceValue = Math.max(-1, Math.min(1, val));
-    this._applyBalanceGain(this._balanceValue); // init 됐으면 즉시, 아니면 저장만
+    this._applyBalanceGain(this._balanceValue);
   }
 
   // ── EQ 체인 ──────────────────────────────────────────────
   _buildEQChain(bands) {
     this._currentBands = bands.map(b => ({ ...b }));
+
+    // 프리앰프: 최대 부스트의 60% 감쇄, 최대 -9dB — APO와 동일 방식, 클리핑 방지
+    const maxBoost = bands.reduce((m, b) => b.gain > m ? b.gain : m, 0);
+    const preampDb = maxBoost > 0.5 ? -Math.min(maxBoost * 0.6, 9) : 0;
+    this._preamp = this._ctx.createGain();
+    this._preamp.gain.value = Math.pow(10, preampDb / 20);
+
     this._eqFilters = bands.map(b => {
       const f = this._ctx.createBiquadFilter();
       f.type = 'peaking';
@@ -72,21 +77,24 @@ class AudioEngine {
       f.Q.value = b.q;
       return f;
     });
-    if (this._eqFilters.length === 0) return this._masterGain;
+    const entry = this._fxEntry || this._masterGain;
+    if (this._eqFilters.length === 0) {
+      this._preamp.connect(entry);
+      return this._preamp;
+    }
     for (let i = 0; i < this._eqFilters.length - 1; i++)
       this._eqFilters[i].connect(this._eqFilters[i + 1]);
-    this._eqFilters[this._eqFilters.length - 1].connect(this._masterGain);
-    return this._eqFilters[0];
+    this._eqFilters[this._eqFilters.length - 1].connect(entry);
+    this._preamp.connect(this._eqFilters[0]);
+    return this._preamp;
   }
 
   // ── 재생 중 프리셋 변경 (소스 유지, 필터 체인만 교체) ────
   liveUpdateEQ(bands) {
     if (!this._ctx || !this._source) return;
 
-    // 소스를 기존 체인에서 분리
     try { this._source.disconnect(); } catch(e) {}
-
-    // 기존 필터 분리 및 제거
+    if (this._preamp) { try { this._preamp.disconnect(); } catch(e) {} this._preamp = null; }
     this._eqFilters.forEach(f => { try { f.disconnect(); } catch(e) {} });
     this._eqFilters = [];
 
@@ -185,22 +193,14 @@ class AudioEngine {
     const src = this._ctx.createBufferSource();
     src.buffer = audioBuf;
 
-    // 채널 라우팅 — 음성이 지정된 채널로만 출력
-    const leftGain  = this._ctx.createGain();
-    const rightGain = this._ctx.createGain();
-    const merger    = this._ctx.createChannelMerger(2);
+    // 채널 라우팅 — StereoPanner 사용 (ChannelMerger 제거)
+    const balPanner = this._ctx.createStereoPanner();
+    balPanner.pan.value = channel === 'left' ? -1 : channel === 'right' ? 1 : 0;
 
-    leftGain.gain.value  = channel === 'right' ? 0 : 1;
-    rightGain.gain.value = channel === 'left'  ? 0 : 1;
+    src.connect(balPanner);
+    balPanner.connect(this._masterGain);
 
-    src.connect(leftGain);
-    src.connect(rightGain);
-    leftGain.connect(merger,  0, 0);
-    rightGain.connect(merger, 0, 1);
-    // 밸런스 슬라이더 값이 반영되도록 masterGain 통과
-    merger.connect(this._masterGain);
-
-    this._balTestNodes = [leftGain, rightGain, merger];
+    this._balTestNodes = [balPanner];
 
     src.start();
     this._source = src;
@@ -266,6 +266,7 @@ class AudioEngine {
       try { this._source.disconnect(); } catch(e) {}
       this._source = null;
     }
+    if (this._preamp) { try { this._preamp.disconnect(); } catch(e) {} this._preamp = null; }
     this._balTestNodes.forEach(n => { try { n.disconnect(); } catch(e) {} });
     this._balTestNodes = [];
     this._eqFilters.forEach(f => { try { f.disconnect(); } catch(e) {} });

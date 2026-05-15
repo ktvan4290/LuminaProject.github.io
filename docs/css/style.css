@@ -38,10 +38,10 @@
   --bg:  #161A1E; --bg2: #1C2128; --bg3: #232A32;
   --border: #323C46;
   --cyan: #D4A030; --orange: #E06820;
-  --text: #B8C4CC; --text2: #7A8E9A; --text3: #445260;
+  --text: #C8D4DC; --text2: #8FAFC0; --text3: #637A88;
   --hover-bg:  #222A34; --active-bg: #2A3540; --item-border: #1E262E;
   --canvas-bg: #161A1E; --canvas-grid: #1E2830;
-  --canvas-zero: #4A3C18; --canvas-label: #445260;
+  --canvas-zero: #4A3C18; --canvas-label: #637A88;
   --scrollbar-thumb: #323C46;
 }
 
@@ -58,6 +58,57 @@ html, body {
 }
 
 .app { display: flex; flex-direction: column; height: 100vh; }
+
+/* ── 효과 패널 ── */
+.effects-panel {
+  width: 200px; min-width: 180px; flex-shrink: 0;
+  display: flex; flex-direction: column;
+  border-left: 1px solid var(--border); overflow: hidden;
+}
+.fx-list { flex: 1; overflow-y: auto; padding: 8px 12px; display: flex; flex-direction: column; gap: 14px; }
+.fx-row { display: flex; flex-direction: column; gap: 4px; }
+.fx-label-row { display: flex; justify-content: space-between; align-items: center; }
+.fx-name { font-size: 11px; color: var(--text2); font-weight: 600; letter-spacing: 0.3px; }
+.fx-val  { font-size: 11px; color: var(--cyan); font-weight: 700; min-width: 20px; text-align: right; }
+
+.fx-hint { font-size: 9px; color: var(--text3); letter-spacing: 0.2px; margin-top: -1px; line-height: 1.3; }
+
+.fx-slider {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 3px;
+  background: var(--border); border-radius: 2px; outline: none; cursor: pointer;
+}
+.fx-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px;
+  border-radius: 50%; background: var(--cyan); cursor: pointer;
+  border: 2px solid var(--bg);
+}
+.fx-slider::-moz-range-thumb {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--cyan); cursor: pointer; border: 2px solid var(--bg);
+}
+
+/* 토글 스위치 */
+.fx-toggle-row { flex-direction: row; justify-content: space-between; align-items: center; padding: 4px 0; border-top: 1px solid var(--border); margin-top: 2px; }
+.fx-toggle { position: relative; width: 36px; height: 20px; cursor: pointer; }
+.fx-toggle input { opacity: 0; width: 0; height: 0; }
+.fx-toggle-track {
+  position: absolute; inset: 0; background: var(--border); border-radius: 20px; transition: background .2s;
+}
+.fx-toggle-track::after {
+  content: ''; position: absolute; width: 14px; height: 14px;
+  border-radius: 50%; background: #fff; top: 3px; left: 3px; transition: transform .2s;
+}
+.fx-toggle input:checked + .fx-toggle-track { background: var(--cyan); }
+.fx-toggle input:checked + .fx-toggle-track::after { transform: translateX(16px); }
+
+.fx-reset-btn {
+  margin: 6px 12px 10px; padding: 5px;
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text3); font-size: 11px; cursor: pointer; border-radius: 2px;
+  transition: border-color .15s, color .15s;
+}
+.fx-reset-btn:hover { border-color: var(--orange); color: var(--orange); }
 
 /* ── 헤더 ── */
 .header {
@@ -488,12 +539,99 @@ input[type=range]:not(.vol-slider):not(.ceq-slider)::-webkit-slider-thumb {
   border-right: 1px solid var(--border);
 }
 
-/* ── 반응형 ── */
-@media (max-width: 750px) {
-  .left-panel  { width: 160px; }
-  .right-panel { width: 200px; }
-  html, body { overflow: auto; }
-  .app { height: auto; }
-  .main { flex-wrap: wrap; }
-  .eq-canvas-wrap { min-height: 240px; }
+/* ── 모바일 탭 바 (데스크톱에서 숨김) ── */
+.mobile-tab-bar { display: none; }
+
+/* ── 모바일 반응형 — 바텀시트 방식 ── */
+@media (max-width: 768px) {
+  html, body { overflow: hidden; }
+  .app { height: 100dvh; }
+
+  /* 헤더 축소 */
+  .header { padding: 0 10px; height: 42px; gap: 6px; }
+  .header-sub, .header-badge { display: none; }
+  .header-title { font-size: 14px; letter-spacing: 1px; }
+  .theme-switcher { gap: 3px; }
+  .theme-btn { padding: 2px 6px; font-size: 8px; letter-spacing: 0.5px; }
+
+  /* 메인: 그래프가 전체를 채움, 패널은 fixed 오버레이 */
+  .main { flex-direction: column; overflow: hidden; }
+
+  /* 그래프: main 전체 */
+  .center-panel { width: 100%; flex: 1; border-right: none; overflow: hidden; }
+  .eq-canvas-wrap { flex: 1; min-height: 0; }
+
+  /* 탭 바: 뷰포트 하단에 고정 */
+  .mobile-tab-bar {
+    display: flex !important;
+    position: fixed;
+    bottom: 0; left: 0; right: 0; height: 50px;
+    z-index: 60;
+    background: var(--bg2);
+    border-top: 2px solid var(--border);
+  }
+  .mob-tab {
+    flex: 1; background: transparent; border: none; border-top: 2px solid transparent;
+    color: var(--text3); padding: 5px 4px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    transition: color .15s, border-color .15s;
+  }
+  .mob-tab .ti { font-size: 16px; }
+  .mob-tab .tl { font-size: 9px; font-weight: 700; letter-spacing: 1px; }
+  .mob-tab.active { color: var(--cyan); border-top-color: var(--cyan); }
+
+  /* 패널: 뷰포트 고정 바텀시트 — 탭 누르면 아래서 슬라이드업 */
+  .left-panel, .right-panel, .effects-panel {
+    display: flex !important;
+    flex-direction: column;
+    position: fixed;
+    bottom: 50px; left: 0; right: 0;
+    height: 62vh;
+    z-index: 50;
+    width: auto; border-right: none;
+    background: var(--bg);
+    border-top: 2px solid var(--cyan);
+    overflow-y: auto;
+    transform: translateY(105%);
+    transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
+  }
+  .main[data-tab="presets"] .left-panel,
+  .main[data-tab="eq"]      .right-panel,
+  .main[data-tab="effects"] .effects-panel {
+    transform: translateY(0);
+  }
+
+  /* 터치 최적화 */
+  .preset-item { padding: 11px 12px; }
+  .stype-btn   { padding: 9px 4px; }
+  .fx-slider { height: 4px; }
+  .fx-slider::-webkit-slider-thumb { width: 22px; height: 22px; }
+  .fx-slider::-moz-range-thumb     { width: 22px; height: 22px; }
+  .ceq-slider::-webkit-slider-thumb { width: 18px; height: 18px; }
+  .balance-viz { gap: 4px; }
+
+  /* 하단 액션 바: 줄 바꿈 허용, 탭바 높이만큼 패딩 */
+  .action-bar {
+    flex-shrink: 0; overflow: visible;
+    flex-wrap: wrap;
+    padding: 5px 8px 56px;
+    gap: 5px; min-height: 0;
+  }
+  .action-bar .group-label { display: none; }
+  .action-bar .sep { display: none; }
+  .action-bar .test-group { flex-shrink: 0; gap: 4px; }
+  .action-bar .btn { padding: 4px 8px; font-size: 10px; }
+  .action-bar .vol-slider { width: 72px; }
+  .action-bar .vol-label { font-size: 10px; }
+  .sep { flex-shrink: 0; }
+
+  /* 패널 외부 클릭 시 닫힘용 오버레이 */
+  .mob-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 49;
+  }
+  .main[data-tab] ~ * .mob-overlay,
+  .main[data-tab] .mob-overlay { display: block; }
 }

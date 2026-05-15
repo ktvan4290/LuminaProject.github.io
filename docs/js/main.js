@@ -350,7 +350,7 @@ function drawEQ() {
     ctx.strokeStyle=p.color+'1A'; ctx.lineWidth=1; ctx.stroke();
   });
 
-  // ── 실시간 스펙트럼 (EQ 커브 아래에 그림) ───────────────
+  // ── 실시간 스펙트럼 (EQ 커브 아래에 그려 구분됨) ─────────
   if (typeof spectrumAnalyzer !== 'undefined') {
     spectrumAnalyzer.drawOverlay(ctx, W, H, PAD, currentPreset.color || '#00D4E8');
   }
@@ -405,6 +405,7 @@ function drawEQ() {
     ctx.fillStyle=C.label; ctx.font='11px "Segoe UI",sans-serif'; ctx.textAlign='center';
     ctx.fillText('밴드를 드래그해서 게인 조절', W/2, PAD.t+14);
   }
+
 }
 
 // ── 커스텀 EQ 드래그 ──────────────────────────────────────
@@ -530,18 +531,56 @@ const DEFAULT_AUDIO = 'audio/test_tracks/THX - Always Coca-Cola.mp3';
     await audioEngine.loadFromUrl(DEFAULT_AUDIO);
     btnPlayFile.disabled = false;
     if (fileLabel) fileLabel.textContent = 'Always Coca-Cola';
-    setTestStatus('기본 음원 로드 완료 — ▶ 재생 버튼으로 재생');
+    setTestStatus('기본 음원 로드 완료 — ▶ 재생 버튼 또는 스페이스바로 재생');
   } catch(e) {
     setTestStatus(`기본 음원 로드 실패: ${e.message}`, false);
   }
 })();
+
+// ── 효과 패널 연동 ────────────────────────────────────────
+// effects 체인은 audio_test.js _init()에서 setupChain()으로 이미 연결됨
+// 슬라이더가 직접 세터 호출
+
+function _bindFx(id, valId, setter) {
+  const slider = document.getElementById(id);
+  const label  = document.getElementById(valId);
+  if (!slider) return;
+  slider.addEventListener('input', () => {
+    const v = parseFloat(slider.value);
+    if (label) label.textContent = v.toFixed(1);
+    audioEngine._init();   // AudioContext + effects chain 초기화 (이미 있으면 no-op)
+    setter(v);
+  });
+}
+
+_bindFx('fxBass',     'fxValBass',     v => effectsEngine.setBass(v));
+_bindFx('fxClarity',  'fxValClarity',  v => effectsEngine.setClarity(v));
+_bindFx('fxVocal',    'fxValVocal',    v => effectsEngine.setVocal(v));
+_bindFx('fxAmbiance', 'fxValAmbiance', v => effectsEngine.setAmbiance(v));
+_bindFx('fxDynamics', 'fxValDynamics', v => effectsEngine.setDynamics(v));
+
+document.getElementById('fxNormalize')?.addEventListener('change', e => {
+  effectsEngine.setNormalize(e.target.checked);
+});
+document.getElementById('fxReset')?.addEventListener('click', () => {
+  ['fxBass','fxClarity','fxVocal','fxAmbiance','fxDynamics'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = 0;
+  });
+  ['fxValBass','fxValClarity','fxValVocal','fxValAmbiance','fxValDynamics'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.textContent = '0';
+  });
+  const norm = document.getElementById('fxNormalize');
+  if (norm) norm.checked = false;
+  effectsEngine.setBass(0); effectsEngine.setClarity(0);
+  effectsEngine.setVocal(0); effectsEngine.setAmbiance(0);
+  effectsEngine.setDynamics(0); effectsEngine.setNormalize(false);
+});
 
 // ── 스펙트럼 토글 ─────────────────────────────────────────
 const spectrumToggle = document.getElementById('spectrumToggle');
 let _spectrumRafId = null;
 
 function _spectrumLoop() {
-  // AudioContext가 생긴 순간부터 자동 연결 (타이밍 문제 없이)
   if (audioEngine._ctx && audioEngine._masterGain && !spectrumAnalyzer._analyser) {
     spectrumAnalyzer.attach(audioEngine._ctx, audioEngine._masterGain);
   }
@@ -567,22 +606,58 @@ if (spectrumToggle) {
 // ── 스페이스바 재생/정지 ──────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.code !== 'Space') return;
+  // 입력창·버튼에서는 동작 안 함
   if (e.target.matches('input, textarea, button, select')) return;
   e.preventDefault();
+
   if (audioEngine.isPlaying) {
-    audioEngine.stop(); setTestStatus('⏸ 정지'); updateTestUI();
+    audioEngine.stop();
+    setTestStatus('⏸ 정지 (스페이스바)');
+    updateTestUI();
   } else if (audioEngine.hasFile) {
     audioEngine.playFile(currentPreset.isCustom ? customPreset.bands : currentPreset.bands);
-    setTestStatus('▶ 재생 중'); updateTestUI();
+    setTestStatus('▶ 재생 중 (스페이스바)');
+    updateTestUI();
     window._onFileEnd = () => { setTestStatus('재생 완료'); updateTestUI(); };
   } else {
     audioEngine.playPinkNoise(currentPreset.isCustom ? customPreset.bands : currentPreset.bands);
-    setTestStatus('♪ 핑크 노이즈'); updateTestUI();
+    setTestStatus('♪ 핑크 노이즈 (스페이스바)');
+    updateTestUI();
   }
 });
 
+// ── 모바일 탭 (바텀시트) ──────────────────────────────────
+const _mainEl = document.querySelector('.main');
+let _activeTab = null;
+
+function _closeMobPanel() {
+  _activeTab = null;
+  _mainEl.removeAttribute('data-tab');
+  document.querySelectorAll('.mob-tab').forEach(b => b.classList.remove('active'));
+  requestAnimationFrame(drawEQ);
+}
+
+document.querySelectorAll('.mob-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    if (_activeTab === tab) {
+      _closeMobPanel();
+    } else {
+      _activeTab = tab;
+      _mainEl.setAttribute('data-tab', tab);
+      document.querySelectorAll('.mob-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      requestAnimationFrame(drawEQ);
+    }
+  });
+});
+
+// 패널 바깥 누르면 닫힘
+document.getElementById('mobOverlay')?.addEventListener('click', _closeMobPanel);
+
 // ── 리사이즈 & 초기화 ─────────────────────────────────────
 new ResizeObserver(()=>drawEQ()).observe(canvas);
+window.addEventListener('resize', ()=>requestAnimationFrame(drawEQ));
 initTheme();
 renderSpeakerTabs();
 renderPresetList();
